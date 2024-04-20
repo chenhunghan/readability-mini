@@ -1,4 +1,3 @@
-use dom;
 use html5ever::tree_builder::TreeSink;
 use html5ever::tree_builder::{ElementFlags, NodeOrText};
 use html5ever::{LocalName, QualName};
@@ -12,7 +11,8 @@ use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::rc::Rc;
-use url::Url;
+
+use crate::dom;
 
 pub static PUNCTUATIONS_REGEX: &str = r"([、。，．！？]|\.[^A-Za-z0-9]|,[^0-9]|!|\?)";
 pub static UNLIKELY_CANDIDATES: &str = "combx|comment|community|disqus|extra|foot|header|menu\
@@ -51,34 +51,6 @@ lazy_static! {
 pub struct Candidate {
     pub node: Rc<Node>,
     pub score: Cell<f32>,
-}
-
-pub fn fix_img_path(handle: Handle, url: &Url) -> bool {
-    let src = dom::get_attr("src", handle.clone());
-    let s = match src {
-        Some(src) => src,
-        None => return false,
-    };
-    if !s.starts_with("//") && !s.starts_with("http://") && !s.starts_with("https://") {
-        if let Ok(new_url) = url.join(&s) {
-            dom::set_attr("src", new_url.as_str(), handle)
-        }
-    }
-    true
-}
-
-pub fn fix_anchor_path(handle: Handle, url: &Url) -> bool {
-    let src = dom::get_attr("href", handle.clone());
-    let s = match src {
-        Some(src) => src,
-        None => return false,
-    };
-    if !s.starts_with("//") && !s.starts_with("http://") && !s.starts_with("https://") {
-        if let Ok(new_url) = url.join(&s) {
-            dom::set_attr("href", new_url.as_str(), handle)
-        }
-    }
-    true
 }
 
 pub fn get_link_density(handle: Handle) -> f32 {
@@ -308,7 +280,6 @@ pub fn clean(
     dom: &mut RcDom,
     id: &Path,
     handle: Handle,
-    url: &Url,
     candidates: &BTreeMap<String, Candidate>,
 ) -> bool {
     let mut useless = false;
@@ -334,8 +305,6 @@ pub fn clean(
                 "form" | "table" | "ul" | "div" => {
                     useless = is_useless(id, handle.clone(), candidates)
                 }
-                "img" => useless = !fix_img_path(handle.clone(), url),
-                "a" => useless = !fix_anchor_path(handle.clone(), url),
                 _ => (),
             }
             dom::clean_attr("id", &mut attrs.borrow_mut());
@@ -347,7 +316,7 @@ pub fn clean(
     let mut useless_nodes = vec![];
     for (i, child) in handle.children.borrow().iter().enumerate() {
         let pid = id.join(i.to_string());
-        if clean(dom, pid.as_path(), child.clone(), url, candidates) {
+        if clean(dom, pid.as_path(), child.clone(), candidates) {
             useless_nodes.push(child.clone());
         }
     }

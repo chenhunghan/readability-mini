@@ -1,49 +1,20 @@
-use dom;
-use error::Error;
-use html5ever::tendril::stream::TendrilSink;
-use html5ever::{parse_document, serialize};
-use markup5ever_rcdom::{RcDom, SerializableHandle};
-#[cfg(feature = "reqwest")]
-use reqwest;
-use scorer;
-use scorer::Candidate;
+use markup5ever_rcdom::RcDom;
 use std::cell::Cell;
 use std::collections::BTreeMap;
-use std::default::Default;
-use std::io::Read;
 use std::path::Path;
-#[cfg(feature = "reqwest")]
-use std::time::Duration;
-use url::Url;
+
+use crate::error::Error;
+use crate::scorer::Candidate;
+use crate::{dom, scorer};
 
 #[derive(Debug)]
 pub struct Product {
     pub title: String,
-    pub content: String,
     pub text: String,
 }
 
-#[cfg(feature = "reqwest")]
-pub fn scrape(url: &str) -> Result<Product, Error> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::new(30, 0))
-        .build()?;
-    let mut res = client.get(url).send()?;
-    if res.status().is_success() {
-        let url = Url::parse(url)?;
-        extract(&mut res, &url)
-    } else {
-        Err(Error::Unexpected)
-    }
-}
-
-pub fn extract<R>(input: &mut R, url: &Url) -> Result<Product, Error>
-where
-    R: Read,
+pub fn extract(mut dom: RcDom) -> Result<Product, Error>
 {
-    let mut dom = parse_document(RcDom::default(), Default::default())
-        .from_utf8()
-        .read_from(input)?;
     let mut title = String::new();
     let mut candidates = BTreeMap::new();
     let mut nodes = BTreeMap::new();
@@ -64,24 +35,15 @@ where
         id = i;
         top_candidate = c;
     }
-    let mut bytes = vec![];
 
     let node = top_candidate.node.clone();
-    scorer::clean(&mut dom, Path::new(id), node.clone(), url, &candidates);
+    scorer::clean(&mut dom, Path::new(id), node.clone(), &candidates);
 
-    serialize(
-        &mut bytes,
-        &SerializableHandle::from(node.clone()),
-        Default::default(),
-    )
-    .ok();
-    let content = String::from_utf8(bytes).unwrap_or_default();
 
     let mut text: String = String::new();
     dom::extract_text(node.clone(), &mut text, true);
     Ok(Product {
         title,
-        content,
         text,
     })
 }
